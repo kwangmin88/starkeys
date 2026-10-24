@@ -3,6 +3,8 @@
 <head><script>(()=>{const C=window.AudioContext||window.webkitAudioContext; window.__acs=[]; window.__st=[]; window.__err=[];
 if(C){const W=class extends C{constructor(...a){super(...a); __acs.push(this);}}; window.AudioContext=window.webkitAudioContext=W;
 const dec=C.prototype.decodeAudioData; C.prototype.decodeAudioData=function(b,...r){const n=b&&b.byteLength; const p=dec.call(this,b,...r); if(p&&p.then) p.then(x=>__st.push('dec ok '+n+' '+Math.round(x.duration)+'s'),e=>__err.push('dec fail '+n+' '+e)); return p;};
+const rs=C.prototype.resume; C.prototype.resume=function(){const p=rs.call(this); __st.push('resume() in '+(window.event&&window.event.type)); p.then(()=>__st.push('resume ok '+this.state),e=>__err.push('resume fail '+e)); return p;};
+for(const t of ['pointerdown','pointerup','touchstart','touchend','click']) document.addEventListener(t,e=>__st.push('ev '+t+' dp='+e.defaultPrevented),true);
 const s=AudioBufferSourceNode.prototype.start; AudioBufferSourceNode.prototype.start=function(...a){__st.push('start '+(this.buffer?Math.round(this.buffer.duration):0)); return s.apply(this,a);};}
 addEventListener('error',e=>__err.push('E '+e.message)); addEventListener('unhandledrejection',e=>__err.push('R '+(e.reason&&e.reason.message||e.reason)));
 const of=window.fetch; window.fetch=function(u,...r){return of.call(this,u,...r).then(x=>{__st.push('fetch '+x.status+' '+String(u).split('/').pop());return x;},e=>{__err.push('fetchfail '+u+' '+e);throw e;});};
