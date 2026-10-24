@@ -1,0 +1,120 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>타격음 고르기</title>
+<style>body{margin:0;padding:18px 16px 40px;background:#140a2a;color:#fff;font:16px/1.5 -apple-system,'Apple SD Gothic Neo',sans-serif}
+h1{font-size:22px;margin:0 0 4px}p{margin:4px 0 14px;opacity:.75;font-size:14px}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button{padding:20px 8px;border:0;border-radius:14px;font:700 18px inherit;color:#fff;background:#3a2470}
+button.on{background:linear-gradient(135deg,#ff4fa8,#7b3bff);box-shadow:0 0 18px #ff4fa880}
+#song{width:100%;margin-top:16px;background:#ff9a2e;color:#1a0b00}
+#st{margin-top:10px;font-size:14px;color:#9fffb0;min-height:20px}</style></head><body>
+<h1>타격음 고르기</h1><p>누르면 그 소리가 납니다. 아래 '노래 위에서 듣기'를 켜면 실제 곡 박자에 맞춰 골라 둔 소리가 계속 납니다. 마음에 드는 이름을 알려 주세요.</p>
+<div class=g id=g></div>
+<button id=song>▶ 노래 위에서 듣기</button><div id=st></div>
+<script>
+// [Claude 작업 · 2026-10-24 · 별빛 건반·손가락 펌프] 사장님 '타격음을 바꿔' — 고를 수 있게 후보를 여럿 둔다.
+// 모두 OfflineAudioContext 로 한 번 구워 버퍼로 쓴다(누를 때마다 합성하지 않아 늦지 않다).
+// 이름 → (oc, out, bright) 를 받아 0.15초 안의 소리를 그린다. bright: PERFECT 1 · GREAT 0.8 · GOOD 0.6
+const noiseBuf = (oc, sec) => {
+  const b = oc.createBuffer(1, Math.round(oc.sampleRate * sec), oc.sampleRate); const d = b.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  return b;
+};
+const env = (oc, peak, at, decay) => { const g = oc.createGain(); g.gain.setValueAtTime(0.0001, 0); g.gain.setValueAtTime(peak, at); g.gain.exponentialRampToValueAtTime(0.0001, at + decay); return g; };
+const noise = (oc, out, { at = 0, peak = 1, decay = 0.05, type = 'highpass', f = 3000, q = 0.7 }) => {
+  const s = oc.createBufferSource(); s.buffer = noiseBuf(oc, 0.2);
+  const fl = oc.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+  s.connect(fl).connect(env(oc, peak, at, decay)).connect(out); s.start(at); s.stop(at + decay + 0.02);
+};
+const tone = (oc, out, { at = 0, peak = 1, decay = 0.08, type = 'sine', f0 = 800, f1 = f0, glide = decay }) => {
+  const o = oc.createOscillator(); o.type = type;
+  o.frequency.setValueAtTime(f0, at); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, at + glide);
+  o.connect(env(oc, peak, at, decay)).connect(out); o.start(at); o.stop(at + decay + 0.02);
+};
+
+const HITSOUNDS = {
+  // 손뼉 — 짧게 세 번 겹친 띠소음 + 꼬리. 리듬 게임 히트사운드의 기본
+  clap: { name: '손뼉', draw(oc, out, b) {
+    for (const [at, p] of [[0, 0.9], [0.009, 0.75], [0.019, 0.85]]) noise(oc, out, { at, peak: p * b, decay: 0.012, type: 'bandpass', f: 1200, q: 1.1 });
+    noise(oc, out, { at: 0.028, peak: 0.6 * b, decay: 0.09, type: 'bandpass', f: 1400, q: 0.9 });
+  } },
+  // 하이햇 — 금속성 '칫'. 가볍고 빠른 곡에 잘 묻는다
+  hat: { name: '하이햇', draw(oc, out, b) {
+    for (const f of [2, 3, 4.16, 5.43, 6.79, 8.21]) tone(oc, out, { peak: 0.09 * b, decay: 0.04, type: 'square', f0: 40 * f * 9 });
+    noise(oc, out, { peak: 0.8 * b, decay: 0.045, f: 7000 });
+  } },
+  // 림샷 — 스네어 테 '딱'. 또렷하고 단단하다
+  rim: { name: '림샷', draw(oc, out, b) {
+    tone(oc, out, { peak: 0.7 * b, decay: 0.03, type: 'triangle', f0: 1750, f1: 1500 });
+    tone(oc, out, { peak: 0.5, decay: 0.05, type: 'sine', f0: 480, f1: 380 });
+    noise(oc, out, { peak: 0.55 * b, decay: 0.02, type: 'bandpass', f: 3500, q: 1.5 });
+  } },
+  // 나무 블록 — '톡'. 귀가 덜 피곤하다
+  wood: { name: '나무 톡', draw(oc, out, b) {
+    tone(oc, out, { peak: 0.9, decay: 0.07, f0: 1050 + 150 * b, f1: 950 });
+    tone(oc, out, { peak: 0.35 * b, decay: 0.03, f0: 2700, f1: 2500 });
+    noise(oc, out, { peak: 0.25 * b, decay: 0.006, f: 4000 });
+  } },
+  // 킥 — 손끝에 '쿵' 하고 실린다. 무게감
+  kick: { name: '쿵 킥', draw(oc, out, b) {
+    tone(oc, out, { peak: 1, decay: 0.14, f0: 160, f1: 48, glide: 0.09 });
+    tone(oc, out, { peak: 0.4 * b, decay: 0.012, type: 'triangle', f0: 2200, f1: 900 });
+    noise(oc, out, { peak: 0.3 * b, decay: 0.008, f: 5000 });
+  } },
+  // 팝 — 거품 터지듯 '뽁'. 귀엽고 가볍다
+  pop: { name: '뽁', draw(oc, out, b) {
+    tone(oc, out, { peak: 0.85, decay: 0.06, f0: 420, f1: 1300 + 300 * b, glide: 0.035 });
+    noise(oc, out, { peak: 0.2 * b, decay: 0.01, f: 3000 });
+  } },
+  // 반짝 — 맑은 종소리 '팅'. 피아노·별빛 느낌
+  bell: { name: '반짝 팅', draw(oc, out, b) {
+    tone(oc, out, { peak: 0.5, decay: 0.16, f0: 2093 });
+    tone(oc, out, { peak: 0.3 * b, decay: 0.1, f0: 3136 });
+    tone(oc, out, { peak: 0.18 * b, decay: 0.05, f0: 5274 });
+    noise(oc, out, { peak: 0.15 * b, decay: 0.005, f: 6000 });
+  } },
+  // 지금 판 — 딸깍 + 톡 + 쿵
+  thud: { name: '지금 소리', draw(oc, out, b) {
+    noise(oc, out, { peak: 0.55 * b, decay: 0.018 + 0.01 * b, f: 2500 + 3500 * b });
+    tone(oc, out, { peak: 0.5, decay: 0.06, type: 'triangle', f0: 900 + 700 * b, f1: 380, glide: 0.045 });
+    tone(oc, out, { peak: 0.75, decay: 0.1, f0: 170, f1: 55 });
+  } },
+};
+
+/** 이름 하나를 세 세기(PERFECT·GREAT·GOOD)로 굽는다 → Promise<AudioBuffer[]> */
+function bakeHit(name) {
+  const h = HITSOUNDS[name] || HITSOUNDS.thud;
+  return Promise.all([[1, 1], [0.8, 0.82], [0.6, 0.66]].map(([b, vol]) => {
+    const sr = 44100; const oc = new OfflineAudioContext(1, Math.round(sr * 0.18), sr);
+    const out = oc.createGain(); out.gain.value = vol; out.connect(oc.destination);
+    h.draw(oc, out, b);
+    return oc.startRendering();
+  })).then((bs) => {
+    // 후보마다 크기가 들쭉날쭉해서 PERFECT 의 꼭대기를 0.9 로 맞춘다(세 세기 사이 차이는 그대로)
+    let pk = 0; for (const x of bs[0].getChannelData(0)) pk = Math.max(pk, Math.abs(x));
+    const k = pk > 0 ? 0.9 / pk : 1;
+    for (const buf of bs) { const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] *= k; }
+    return bs;
+  });
+}
+
+const BASE='https://starkeys-songs.km46170008.workers.dev/';
+let ac=null, cur='clap', bufs={}, playing=null, timer=0;
+const ctx=()=>{ if(!ac){ try{ if(navigator.audioSession) navigator.audioSession.type='playback'; }catch(e){} ac=new (window.AudioContext||window.webkitAudioContext)(); } if(ac.state!=='running') ac.resume(); return ac; };
+const get=async n=>bufs[n]||(bufs[n]=await bakeHit(n));
+const fire=async(n,j=0,when=0)=>{ const b=(await get(n))[j]; const s=ac.createBufferSource(); s.buffer=b; const g=ac.createGain(); g.gain.value=.85; s.connect(g).connect(ac.destination); s.start(when); };
+const g=document.getElementById('g');
+for(const [k,v] of Object.entries(HITSOUNDS)){ const b=document.createElement('button'); b.textContent=v.name; b.dataset.k=k; if(k===cur) b.className='on';
+  b.onclick=()=>{ ctx(); cur=k; [...g.children].forEach(x=>x.className=x.dataset.k===k?'on':''); fire(k); }; g.appendChild(b); }
+document.getElementById('song').onclick=async()=>{
+  const c=ctx(); const st=document.getElementById('st'); const btn=document.getElementById('song');
+  if(playing){ try{playing.stop()}catch(e){} playing=null; clearInterval(timer); btn.textContent='▶ 노래 위에서 듣기'; st.textContent=''; return; }
+  st.textContent='곡 받는 중…';
+  const [ab, ch]=await Promise.all([fetch(BASE+'audio/k01.m4a?q=2').then(r=>r.arrayBuffer()), fetch(BASE+'charts/k01.json?v=3').then(r=>r.json())]);
+  const buf=await c.decodeAudioData(ab); const notes=(ch.charts.normal||ch.charts.easy).notes||ch.charts.normal;
+  const times=notes.map(n=>Array.isArray(n)?n[0]:n.t).filter(t=>t>=40);
+  const src=c.createBufferSource(); src.buffer=buf; const gg=c.createGain(); gg.gain.value=.95; src.connect(gg).connect(c.destination);
+  const t0=c.currentTime+0.15; src.start(t0,40); playing=src; btn.textContent='■ 멈추기'; st.textContent='재생 중 — 위 버튼으로 소리를 바꿔 보세요';
+  let i=0; clearInterval(timer);
+  timer=setInterval(()=>{ const now=c.currentTime-t0+40; while(i<times.length&&times[i]<now+0.25){ const at=t0+times[i]-40; if(at>c.currentTime) fire(cur,0,at); i++; } },60);
+};
+</script></body></html>
