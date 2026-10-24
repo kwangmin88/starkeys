@@ -1,0 +1,13 @@
+<!doctype html><meta name=viewport content="width=device-width"><body style="font:16px monospace;padding:20px">
+<button id=a style="font-size:20px;padding:20px;width:100%">A: 세션 없이 resume</button><br><br>
+<button id=b style="font-size:20px;padding:20px;width:100%">B: 세션 playback 후 resume</button><br><br>
+<button id=c style="font-size:20px;padding:20px;width:100%">C: 새 컨텍스트 만들기</button>
+<pre id=o></pre><script>
+const log=s=>o.textContent+=s+'\n';
+let ac=new AudioContext(); log('made early: '+ac.state);
+const beep=c=>{const x=c.createOscillator(); x.connect(c.destination); x.start(); x.stop(c.currentTime+.3);};
+a.onclick=async()=>{log('A before '+ac.state); try{await ac.resume();}catch(e){log('err '+e)} log('A after '+ac.state+' t='+ac.currentTime.toFixed(2)); beep(ac);};
+b.onclick=async()=>{try{navigator.audioSession.type='playback'}catch(e){log('sess err '+e)} log('B before '+ac.state); try{await ac.resume();}catch(e){log('err '+e)} log('B after '+ac.state); beep(ac);};
+c.onclick=async()=>{const n=new AudioContext(); log('C new '+n.state); try{await n.resume()}catch(e){log('err '+e)} log('C after '+n.state); beep(n);};
+setInterval(()=>{document.title=ac.state},300);
+</script>
