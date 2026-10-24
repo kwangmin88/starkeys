@@ -11,15 +11,17 @@ button{display:block;width:100%;margin:10px 0 4px;padding:18px;border:0;border-r
 <button id=b4 style="background:#444">모두 멈춤</button>
 <div id=info></div>
 <script>
+window.onerror=(m)=>{document.getElementById('info').textContent+='\n오류: '+m;};
+let an=null; const meter=c=>{ if(!an){ an=c.createAnalyser(); an.connect(c.destination);} return an; };
 const SONG='https://starkeys-songs.km46170008.workers.dev/audio/k01.m4a';
 let ac=null; const getAc=()=>{ if(!ac){ try{ if(navigator.audioSession) navigator.audioSession.type='playback'; }catch(e){} ac=new (window.AudioContext||window.webkitAudioContext)(); } return ac; };
-const info=()=>{ document.getElementById('info').textContent='기기: '+navigator.userAgent+'\n세션: '+(navigator.audioSession?navigator.audioSession.type:'없음')+'\n웹오디오: '+(ac?ac.state+' '+ac.currentTime.toFixed(1)+'s':'아직')+'\n화면 크기: '+innerWidth+'x'+innerHeight; };
+const info=()=>{ let rms='-'; if(an){const v=new Float32Array(1024); an.getFloatTimeDomainData(v); rms=Math.sqrt(v.reduce((q,x)=>q+x*x,0)/v.length).toFixed(3);} document.getElementById('info').textContent='웹오디오 출력 크기: '+rms+'\n일반 오디오: '+(el?(el.paused?'멈춤':'재생')+' '+el.currentTime.toFixed(1)+'s 음량'+el.volume+(el.muted?' 음소거':''):'아직')+'\n'+'기기: '+navigator.userAgent+'\n세션: '+(navigator.audioSession?navigator.audioSession.type:'없음')+'\n웹오디오: '+(ac?ac.state+' '+ac.currentTime.toFixed(1)+'s':'아직')+'\n화면 크기: '+innerWidth+'x'+innerHeight; };
 setInterval(info,500); info();
 const say=(i,t)=>document.getElementById('r'+i).textContent=t;
-b1.onclick=async()=>{ try{ const c=getAc(); await c.resume(); const o=c.createOscillator(), g=c.createGain(); g.gain.value=.3; o.frequency.value=660; o.connect(g).connect(c.destination); o.start(); o.stop(c.currentTime+.6); say(1,'틀었음 · 상태 '+c.state); }catch(e){ say(1,'오류: '+e); } };
+b1.onclick=async()=>{ try{ const c=getAc(); await c.resume(); const o=c.createOscillator(), g=c.createGain(); g.gain.value=.3; o.frequency.value=660; o.connect(g).connect(meter(c)); o.start(); o.stop(c.currentTime+.6); say(1,'틀었음 · 상태 '+c.state); }catch(e){ say(1,'오류: '+e); } };
 let el=null;
 b2.onclick=async()=>{ try{ el=el||new Audio(SONG); el.currentTime=40; await el.play(); say(2,'재생 중 (일반 오디오)'); }catch(e){ say(2,'오류: '+e); } };
 let src=null;
-b3.onclick=async()=>{ try{ const c=getAc(); await c.resume(); say(3,'노래 받는 중…'); const buf=await (await fetch(SONG)).arrayBuffer(); say(3,'푸는 중… '+Math.round(buf.byteLength/1024)+'KB'); const b=await c.decodeAudioData(buf); src=c.createBufferSource(); src.buffer=b; src.connect(c.destination); src.start(0,40); say(3,'재생 중 · '+Math.round(b.duration)+'초짜리 · 상태 '+c.state); }catch(e){ say(3,'오류: '+e); } };
+b3.onclick=async()=>{ try{ const c=getAc(); await c.resume(); say(3,'노래 받는 중…'); const buf=await (await fetch(SONG)).arrayBuffer(); say(3,'푸는 중… '+Math.round(buf.byteLength/1024)+'KB'); const b=await c.decodeAudioData(buf); src=c.createBufferSource(); src.buffer=b; src.connect(meter(c)); src.start(0,40); say(3,'재생 중 · '+Math.round(b.duration)+'초짜리 · 상태 '+c.state); }catch(e){ say(3,'오류: '+e); } };
 b4.onclick=()=>{ try{el&&el.pause();}catch(e){} try{src&&src.stop();}catch(e){} };
 </script></body></html>
